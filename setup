@@ -1,0 +1,15 @@
+#! /usr/bin/env zsh
+
+set -euo pipefail
+
+__DIR=$0:h:P
+cd $__DIR
+
+# 1.
+pip install -r requirements.txt
+
+# 2.
+bundle install
+
+# 3.
+git config core.hooksPath git_hooks/

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, unlabeled]
+    branches: '*'
+
+jobs:
+  build:
+    if: ${{ (github.event.action == 'unlabeled' && github.event.label.name == 'WIP') || (github.event.action != 'unlabeled' && !contains(github.event.pull_request.labels.*.name, 'WIP')) }}
+    runs-on: macos-10.15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_12.1.app/Contents/Developer
+      # To create a fresh cache if none of the cache parameters has changed,
+      # simply bump the CACHE_VERSION variable. This is mainly needed when
+      # changes to the caching steps have been made, but might be useful for
+      # other debugging purposes as well. Github deletes the oldest unused
+      # caches as soon as the volume of caches increases over a certain value.
+      CACHE_VERSION: 1
+      BUNDLER_VERSION: 2.1.4
+      BUNDLE_DIR: .bundle
+
+    steps:
+      - name: Create output directories
+        run: |
+          _BUILD_OUTPUT_DIR=$HOME/build_output
+          mkdir $_BUILD_OUTPUT_DIR
+          echo "BUILD_OUTPUT_DIR=$_BUILD_OUTPUT_DIR" >> $GITHUB_ENV
+          
+          _XCODEBUILD_LOG_DIR=$_BUILD_OUTPUT_DIR/xcodebuild_logs
+          mkdir $_XCODEBUILD_LOG_DIR
+          echo "XCODEBUILD_LOG_DIR=$_XCODEBUILD_LOG_DIR" >> $GITHUB_ENV
+
+      - name: 'Checkout code'
+        uses: actions/checkout@v2
+
+      - name: 'Set RUBY_VERSION'
+        run: echo "RUBY_VERSION=$(cat .ruby-version)" >> $GITHUB_ENV
+
+      - name: 'Select ruby'
+        uses: actions/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+
+      - name: 'Install bundler'
+        run: gem install --conservative bundler:$BUNDLER_VERSION
+
+      - name: 'Fetch bundle cache'
+        id: bundle-cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ env.BUNDLE_DIR }}
+          key: cache-${{ env.CACHE_VERSION }}_bundler-${{ env.BUNDLER_VERSION }}_bundle-${{ hashFiles('Gemfile.lock') }}
+
+      - name: 'Install bundle'
+        if: ${{ !steps.bundle-cache.outputs.cache-hit }}
+        run: |
+          bundle config path $BUNDLE_DIR
+          bundle install --jobs 4 --retry 3
+
+      - name: 'Clean / Build'
+        run: |
+          set -euo pipefail
+          bundle config path $BUNDLE_DIR
+          bundle exec fastlane clean_and_build buildlog_path:"$XCODEBUILD_LOG_DIR" | tee "$XCODEBUILD_LOG_DIR/xcodebuild_fastlane.log"
+
+      - name: 'Upload xcodebuild logs'
+        uses: actions/upload-artifact@v2
+        with:
+          name: xcodebuild-logs
+          path: ${{ env.XCODEBUILD_LOG_DIR }}

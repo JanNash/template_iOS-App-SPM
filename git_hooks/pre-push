@@ -1,0 +1,58 @@
+#! /usr/bin/env zsh
+
+set -euo pipefail
+
+# # # # # # #
+# Stage and stash all local changes
+STASH_MESSAGE="<pre-push-$(date +%s)> Temporary stash, do not pop or delete!"
+git add .
+git diff --cached --quiet --exit-code
+if [ $? -ne 0 ]
+then
+    echo "[pre-push-hook] Pushing all local changes to temporary stash"
+    git stash push -m "$STASH_MESSAGE"
+fi
+#
+# # # # # # #
+
+# # # # # # #
+# Function to pop temporary stash
+function pop_stash
+{
+    if [ ! -z "$(git stash list)" ]
+    then
+        STASH_REF="$(git log -g stash --grep="$STASH_MESSAGE" --pretty=format:"%gd")"
+        if [ ! -z "$STASH_REF" ]
+        then
+            echo "[pre-push-hook] Popping temporary stash"
+            git stash pop "$STASH_REF"
+        fi
+    fi
+}
+#
+# # # # # # #
+
+# # # # # # #
+# Run synx and xUnique
+./run_synx_and_xUnique
+#
+# # # # # # #
+
+# # # # # # #
+# Check for changes made by hook
+git add .
+git diff --cached --quiet --exit-code
+if [ $? -eq 0 ]
+then
+    echo "[pre-push-hook] No changes made by hook"
+    pop_stash
+    exit 0
+else
+    echo "[pre-push-hook] Committing changes made by hook"
+    git commit --no-verify -m "[pre-push-hook] Run synx and xUnique"
+    echo "[pre-push-hook] Hook committed changes, please retry push"
+    pop_stash
+    exit 1
+fi
+#
+# # # # # # #

@@ -1,0 +1,114 @@
+#! /usr/bin/env zsh
+
+set -euo pipefail
+
+__DIR=$0:h:P
+cd $__DIR
+
+
+if [ "$#" -ne 1 ]
+then
+    echo "Usage: ./initial_setup <desired project name>"
+    exit 1
+fi
+
+: "${$(git config user.name):?'Error: git config user.name' is not set}"
+: "${$(git config user.email):?'Error: git config user.email' is not set}"
+
+# Adapted from https://stackoverflow.com/a/48004237/3406709
+
+echo "Installing 'rename' and 'ack' via homebrew"
+HOMEBREW_NO_AUTO_UPDATE=1 brew install rename ack
+
+# While the output of `next_to_rename` isn't empty, run 
+# rename on the file/directory it returns.
+# Doing this for one result at a time has two advantages:
+# - it prevents rename from erroring because the underlying path
+#   of an item that should have been renamed has changed, thus it
+#   can't find the item anymore.
+# - it allows us to echo each item that will be renamed before
+#   renaming it, and if we wanted, we could even get user input
+#   to confirm/skip the renaming of specific items.
+echo "Replacing occurrences of 'PROJECTNAME' in file and directory names with '$1'"
+
+function next_to_rename() {
+    find . \
+        -name 'PROJECTNAME*' \
+        -print0 \
+        -quit
+}
+
+while [ -n "$(next_to_rename)" ]
+do
+    _NEXT_TO_RENAME="$(next_to_rename)"
+    echo "Will rename $_NEXT_TO_RENAME"
+    rename --subst-all 'PROJECTNAME' "$1" "$_NEXT_TO_RENAME"
+done
+
+# While the output of `next_to_process` isn't empty,
+# run `sed` on the file it returns.
+# In this case, we do this so we can echo each file
+# that will be processed before processing it. If we
+# wanted, we could get user input to confirm/skip the
+# processing of specific files.
+echo "Replacing occurrences of 'PROJECTNAME' in files with '$1'"
+
+function next_to_process() {
+    ack \
+        --ignore-file=is:initial_setup \
+        --ignore-file=is:README.md \
+        --ignore-dir=is:.venv \
+        --files-with-matches \
+        --print0 \
+        -1 \
+        'PROJECTNAME'
+}
+
+while [ -n "$(next_to_process)" ]
+do
+    _NEXT_TO_PROCESS="$(next_to_process)"
+    echo "Will replace occurrences of 'PROJECTNAME' in $_NEXT_TO_PROCESS"
+    sed -i '' "s/PROJECTNAME/$1/g" "$_NEXT_TO_PROCESS"
+done
+
+echo "Overwriting README.md with PROJECT_README.md"
+mv PROJECT_README.md README.md
+
+echo "Running setup script"
+./setup
+
+echo "Running synx and xunique twice"
+./run_synx_and_xUnique
+./run_synx_and_xUnique
+
+echo "Adding all changes"
+git add .
+
+echo "Removing LICENSE file"
+git rm LICENSE
+
+echo "Removing setup script from index"
+git rm --cached "$0:P"
+
+git status
+
+echo "Overwriting initial commit"
+git commit --amend --no-edit
+
+RED="\033[1;31m"
+NOCOLOR="\033[0m"
+
+echo -n "Finished, \"$0:P\" deletes itself in ${RED}5${NOCOLOR} seconds!"
+sleep 1
+echo -n "\b\b\b\b\b\b\b\b\b\b\b ${RED}4${NOCOLOR} seconds!"
+sleep 1
+echo -n "\b\b\b\b\b\b\b\b\b\b\b ${RED}3${NOCOLOR} seconds!"
+sleep 1
+echo -n "\b\b\b\b\b\b\b\b\b\b\b ${RED}2${NOCOLOR} seconds!"
+sleep 1
+echo -n "\b\b\b\b\b\b\b\b\b\b\b ${RED}1${NOCOLOR} second !"
+sleep 1
+echo "\b\b\b\b\b\b\b\b\b\b\b ${RED}0${NOCOLOR} seconds!"
+echo "Bye 👋"
+
+rm "$0:P"

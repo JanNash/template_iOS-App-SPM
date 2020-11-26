@@ -1,0 +1,24 @@
+#! /usr/bin/env zsh
+
+set -euo pipefail
+
+__DIR=$0:h:P
+cd $__DIR
+
+# # # # # # #
+# Create XCODE_PROJECT variable from .projectname file
+XCODE_PROJECT="$(head -n 1 .projectname).xcodeproj/"
+#
+# # # # # # #
+
+# # # # # # #
+# Run synx
+synx --exclusion "Dev Environment" --prune "$XCODE_PROJECT/"
+#
+# # # # # # #
+
+# # # # # # #
+# Run xUnique
+xunique --sort --unique "$XCODE_PROJECT/project.pbxproj"
+#
+# # # # # # #
